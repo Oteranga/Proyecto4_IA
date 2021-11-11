@@ -1,3 +1,4 @@
+#include <math.h>
 #include <iostream>
 #include <fstream>
 #include <string>
@@ -11,12 +12,17 @@ typedef vector<vector<int> > matrix;
 class neuronal_network{
 	private:
 		vector<string> headers;
-		//matrix dataset;
-	public:
+		int num_classes;
 		matrix dataset;
+	public:
 		neuronal_network();
 		neuronal_network(string file_name);
 		matrix read_dataset(string file_name);
+		double sigmoid(double data);
+		double tanh(double data);
+		double relu(double data);
+		double softmax(double vec_value, vector<double> vec);
+
 };
 
 neuronal_network::neuronal_network(string file_name){
@@ -49,4 +55,30 @@ matrix neuronal_network::read_dataset(string file_name){
 	}
 	file.close();
 	return data;
+}
+
+double neuronal_network::sigmoid(double data){
+	double result = 1 / (1 + exp(-data));
+	return result;
+}
+
+double neuronal_network::tanh(double data){
+	double result = (1 - exp(-2 * data)) / (1 + exp(-2 * data));
+	return result;
+}
+
+double neuronal_network::relu(double data){
+	if(data > 0)
+		return data;
+	else if(data <= 0)
+		return 0;
+}
+
+double neuronal_network::softmax(double vec_value, vector<double> vec){
+	double result = exp(vec_value);
+	double sum = 0;
+	for(int i = 0; i < num_classes; i++){
+		sum += exp(vec[i]);
+	}
+	return result / sum;
 }
