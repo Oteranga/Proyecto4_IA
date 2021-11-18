@@ -1,0 +1,10 @@
+{
+    "files.associations": {
+        "vector": "cpp",
+        "iosfwd": "cpp",
+        "iterator": "cpp",
+        "random": "cpp",
+        "stdexcept": "cpp",
+        "algorithm": "cpp"
+    }
+}

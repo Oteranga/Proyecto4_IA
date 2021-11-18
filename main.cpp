@@ -3,8 +3,8 @@
 using namespace std;
 
 int main(){
-    neuronal_network neuronal("sign_mnist_train.csv");
-    
+    neural_network neural("sign_mnist_train.csv");
+    neural.feed_forward(10);
 
     return 0;
 }
