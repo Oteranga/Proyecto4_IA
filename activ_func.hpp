@@ -1,4 +1,4 @@
-#pragma once
+ #pragma once
 
 
 #include <iostream>
@@ -14,6 +14,7 @@ class ActivFunc{
         matrix derivatives(matrix input); 
         matrix activation(matrix input);
         ActivFunc(string type_name, int num_classes);
+		ActivFunc(){};
     private:
         string type;
         int num_classes;

@@ -26,7 +26,6 @@ class NeuralNetwork{
 		int num_h_nodes;
 		int num_classes;
 		double learning_rate;
-		string activ_func;
 		matrix dataset;
 		matrix dataset_T;
 		matrix x_values;
@@ -34,16 +33,18 @@ class NeuralNetwork{
 
 		matrix read_dataset(string file_name, string type);
 		matrix weights(int size, int input_size);
-		matrix feed_forward(int input_index, int hidden_nodes, int output_nodes);
-		matrix variation_forward(int input_index, int hidden_nodes, int output_nodes);
+		matrix feed_forward(int input_index);
+		matrix variation_forward(int input_index);
 		void back_propagation(matrix result_ho, int i);
 		matrix get_target_arr(int input_index, string type); 
 		void print_matrix(matrix mat);
 		matrix array_to_mat(vector<double> mat);
 		matrix matrix_mul(matrix hidden, matrix input);
+		matrix set_mat(int rows, int columns);
 		matrix substract_matrices(matrix result, matrix result_i);
 		matrix scalar_mul(matrix mat);
 		matrix transpose(matrix mat);
+		matrix element_mul(matrix error, matrix derivative);
 	public:
 		NeuralNetwork();
 		NeuralNetwork(int, int, int, string, double);
@@ -57,7 +58,6 @@ NeuralNetwork::NeuralNetwork(int num_features, int num_h_layers, int num_h_nodes
 	this->num_h_nodes = num_h_nodes;
 	this->num_o_nodes = 24;
 	this->num_classes = num_o_nodes+1;
-	this->activ_func = activ_func;
 	this->learning_rate = learning_rate;
 	this->activ_func = ActivFunc(activ_func_type,num_classes);
 }
@@ -67,15 +67,16 @@ NeuralNetwork::NeuralNetwork(int num_features, int num_h_layers, int num_h_nodes
 void NeuralNetwork::train(string file_name){
 	this->dataset = this->read_dataset(file_name, " ");
 	//int input_size = this->x_values.size();
-	int num_tests = 10000;
+	int num_tests = 5;
 	int input_size = 1;
 	//First feed_forward
-	matrix result_ho = feed_forward(0, this->num_h_nodes,this->num_o_nodes);
-	back_propagation(result_ho, 0);
-	for(int i=1; i<input_size; i++){
+	
+	for(int i=0; i<input_size; i++){
+		matrix result_ho = feed_forward(i);
+		back_propagation(result_ho, i);
 		for(int j = 0; j < num_tests; j++){
-			//llamar a nuevo variation_forward
-			back_propagation(result_ho, i);
+			matrix new_result_ho = variation_forward(i);
+			back_propagation(new_result_ho, i);
 		}
 	}
 }
@@ -86,7 +87,7 @@ void NeuralNetwork::test(string file_name){
 	int input_size = 1;
 	for(int i=0; i<input_size; i++){
 		matrix targets = get_target_arr(i,"testing");
-		matrix result = feed_forward(i, this->num_h_nodes, this->num_o_nodes);
+		matrix result = variation_forward(i);
 		print_matrix(result);
 	}
 }
@@ -132,97 +133,109 @@ matrix NeuralNetwork::read_dataset(string file_name, string type){
 
 // SECONDARY FUNCTIONS
 
-matrix NeuralNetwork::feed_forward(int input_index, int hidden_nodes, int output_nodes){
-	Layer layer_i = Layer(0,x_values[input_index].size(),x_values[input_index]);
-	this->layers.push_back(layer_i);
-
-	matrix w = weights(hidden_nodes, x_values[input_index].size());
-	// FIRST LAYER
+matrix NeuralNetwork::feed_forward(int input_index){
+	// LAYER I TO H0
+	int x_size = x_values[input_index].size();
+	matrix w = weights(this->num_h_nodes, x_size);
 	matrix input = array_to_mat(x_values[input_index]);
 	matrix result = matrix_mul(w, input);
-	matrix result_ih = activ_func.activation(result);
+	matrix result_activ = activ_func.activation(result);
 
-	Layer layer_ih = Layer(1,this->num_h_nodes,result_ih);
-	this->layers.push_back(layer_ih);
+	Layer layer_h0(0,input,w,result_activ);
+	this->layers.push_back(layer_h0);
 	
-	//HIDDEN LAYERS
+	// LAYER H0 TO HN
 	int i=1;
 	if(this->num_h_layers > 1){
 		for(; i<this->num_h_layers; i++){
-			matrix new_w = weights(hidden_nodes, hidden_nodes);
-			result = matrix_mul(new_w, result_ih);
-			result_ih = activ_func.activation(result);
-			Layer layer_ih_temp = Layer(i+1,this->num_h_nodes,result_ih);
-			this->layers.push_back(layer_ih);
+			Layer layer_hn(i,result_activ);
+			matrix new_w = weights(this->num_h_nodes, this->num_h_nodes);
+			result = matrix_mul(new_w, result_activ);
+			result_activ = activ_func.activation(result);
+			layer_hn.weights = new_w;
+			layer_hn.outputs = result_activ;
+			this->layers.push_back(layer_hn);
 		}
 	}
 
 	// OUTPUT LAYER
-	matrix w_o = weights(output_nodes, hidden_nodes);
-	matrix result_h = matrix_mul(w_o, result_ih);
+	matrix w_o = weights(this->num_o_nodes, this->num_h_nodes);
+	matrix result_h = matrix_mul(w_o, result_activ);
 	matrix result_ho = activ_func.activation(result_h);
-	//print_matrix(result_ho);
+	Layer layer_ho(i,result_activ,w_o,result_ho);
+	this->layers.push_back(layer_ho);
+
 	return result_ho;
 }
 
-matrix NeuralNetwork::variation_forward(int input_index, int hidden_nodes, int output_nodes){
-	// FIRST LAYER
+matrix NeuralNetwork::variation_forward(int input_index){
+	// LAYER I TO H0
+	int x_size = x_values[input_index].size();
+	matrix w = this->layers[0].weights;
 	matrix input = array_to_mat(x_values[input_index]);
-	matrix result = matrix_mul(this->layers[0], input);
-	matrix result_ih = activ_func.activation(result);
+	matrix result = matrix_mul(w, input);
+	matrix result_activ = activ_func.activation(result);
 
-	Layer layer_ih = Layer(0,this->num_h_nodes,result_ih);
-	this->layers.push_back(layer_ih);
+	this->layers[0].outputs = result_activ;
 	
-	//HIDDEN LAYERS
-	int i=0;
+	// LAYER H0 TO HN
+	int i=1;
 	if(this->num_h_layers > 1){
-		for(; i<this->num_h_layers-1; i++){
-			matrix new_w = weights(hidden_nodes, hidden_nodes);
-			result = matrix_mul(new_w, result_ih);
-			result_ih = activ_func.activation(result);
-			Layer layer_ih_temp = Layer(i+1,this->num_h_nodes,result_ih);
-			this->layers.push_back(layer_ih);
+		for(; i<this->num_h_layers; i++){
+			this->layers[i].inputs = result_activ;
+			matrix new_w = this->layers[i].weights;
+			result = matrix_mul(new_w, result_activ);
+			result_activ = activ_func.activation(result);
+			this->layers[i].outputs = result_activ;
 		}
 	}
 
 	// OUTPUT LAYER
-	matrix w_o = weights(output_nodes, hidden_nodes);
-	matrix result_h = matrix_mul(w_o, result_ih);
+	matrix w_o = this->layers[i].weights;
+	matrix result_h = matrix_mul(w_o, result_activ);
 	matrix result_ho = activ_func.activation(result_h);
-	//print_matrix(result_ho);
+	this->layers[i].inputs = result_activ;
+	this->layers[i].outputs = result_ho;
+
 	return result_ho;
 }
 
 void NeuralNetwork::back_propagation(matrix result_ho, int input_index){
-	matrix errors;
+	matrix output_errors;
+	matrix temp_errors;
 	for(int i=this->num_h_layers; i>=0; i--){
+		matrix delta_values;
 		if(i==this->num_h_layers){
 			matrix targets = get_target_arr(input_index,"training");
-			errors = substract_matrices(result_ho,targets);
+			output_errors = substract_matrices(result_ho,targets);
 			// 1. learning rate * errors
-			matrix rate_mat = scalar_mul(errors);
+			matrix rate_mat = scalar_mul(output_errors); //24x1
 
-			matrix mat_H = transpose(this->layers[i].inputs);
-			matrix deriv = activ_func.derivatives(result_ho);
+			matrix deriv = activ_func.derivatives(result_ho); //24x1
 
 			// 2. learning rate * errors * derivatives
-			matrix mult_mat = matrix_mul(rate_mat, deriv);
+			matrix mult_mat = element_mul(rate_mat, deriv); //24x1
+
 			// 3. learning rate * errors * derivatives * hidden_input
-			errors = matrix_mul(mult_mat, mat_H);
+			matrix mat_H = transpose(this->layers[i].inputs); //1x10
+			delta_values = matrix_mul(mult_mat, mat_H);
+			temp_errors = output_errors;
 		} else {
+			matrix weights_T = transpose(this->layers[i+1].weights);
+			matrix hidden_errors = matrix_mul(weights_T,temp_errors);
 			// 1. learning rate * errors
-			matrix rate_mat = scalar_mul(errors);
+			matrix rate_mat = scalar_mul(hidden_errors);
 
 			matrix mat_H = transpose(this->layers[i].inputs);
-			matrix deriv = activ_func.derivatives(this->layers[i+1].inputs);
+			matrix deriv = activ_func.derivatives(this->layers[i].outputs);
 
 			// 2. learning rate * errors * derivatives
-			matrix mult_mat = matrix_mul(rate_mat, deriv);
+			matrix mult_mat = element_mul(rate_mat, deriv);
 			// 3. learning rate * errors * derivatives * hidden_input
-			errors = matrix_mul(mult_mat, mat_H);
+			delta_values = matrix_mul(mult_mat, mat_H);
+			temp_errors = hidden_errors;
 		}
-		
+		this->layers[i].weights = substract_matrices(delta_values, this->layers[i].weights); 
 	}
 }
 
@@ -245,7 +258,7 @@ matrix NeuralNetwork::weights(int num_hid_nodes, int input_size){
 }
 
 matrix NeuralNetwork::get_target_arr(int input_index, string type){
-	vector<double> targets(this->num_classes, 0.0);
+	vector<double> targets(this->num_o_nodes, 0.0);
 	if(type != "testing")
 		targets[this->labels[input_index]] = 1.0;
 	else
@@ -275,17 +288,22 @@ matrix NeuralNetwork::matrix_mul(matrix weights, matrix input){
 	if(weights[0].size() != input.size())
 		throw invalid_argument("Matrices columns and rows do not match");
 	
-	matrix result;
-	for(int i = 0; i < weights.size(); i++){
-		vector<double> temp_sum;
-		double sum = 0.0;
-		for(int j = 0; j < weights[i].size(); j++){
-			sum += (weights[i][j] * input[j][0]);
+	int cols = input[0].size();
+	int rows = weights.size();
+	matrix result(rows,vector<double>(cols,0));
+	for(int i = 0; i < rows; i++){
+		for(int j = 0; j < cols; j++){
+			for(int k = 0; k < weights[0].size(); k++){
+				result[i][j] += weights[i][k] * input[k][j];
+			}
 		}
-		temp_sum.push_back(sum);
-		result.push_back(temp_sum);
 	}
 	return result;
+}
+
+matrix NeuralNetwork::set_mat(int rows, int columns){
+	matrix output;
+	return output;
 }
 
 matrix NeuralNetwork::array_to_mat(vector<double> arr){
@@ -300,9 +318,11 @@ matrix NeuralNetwork::array_to_mat(vector<double> arr){
 
 matrix NeuralNetwork::substract_matrices(matrix result_ho, matrix targets){
 	matrix errors; 
-	for(int j = 0; j < result_ho.size(); j++){
+	for(int i = 0; i < targets.size(); i++){
 		vector<double> temp;
-		temp.push_back(targets[j][0] - result_ho[j][0]);
+		for(int j = 0; j < targets[0].size(); j++){
+			temp.push_back(targets[i][j] - result_ho[i][j]);
+		}
 		errors.push_back(temp);
 	}
 	return errors;
@@ -328,5 +348,17 @@ matrix NeuralNetwork::transpose(matrix mat){
 		new_mat.push_back(temp);
 	}
 
+	return new_mat;
+}
+
+matrix NeuralNetwork::element_mul(matrix error, matrix derivative){
+	matrix new_mat;
+	for(int i = 0; i < error.size(); i++){
+		vector<double> temp;
+		for(int j = 0; j < error[0].size(); j++){
+			temp.push_back(error[i][j] * derivative[i][j]);
+		}
+		new_mat.push_back(temp);
+	}
 	return new_mat;
 }
